@@ -19,23 +19,57 @@ import Data.Proxy
 import Data.Text
 import qualified Data.Map as Map
 
-newtype UserId = UserId Int
+type MainAPI =
+  "messages"  :> Capture "last" Int :> Get '[JSON] RecieveMessages
+  :<|> "message" :> ReqBody '[JSON] PostMessage
+    :> Post '[JSON] RecieveMessages
+  :<|> "auth" :> "logout" :> Post '[JSON] ()
+
+type LoginAPI =
+  "auth" :> "login" :> ReqBody '[JSON] LoginData :> Post '[PlainText] Text
+
+type User = Text
+type Message = Text
+
+data MessageObject = MessageObject User Message
   deriving (Generic, Show)
 
-data MessageObject = MessageObject UserId Text
+-- Send the message along with the last synced message id (length actually)
+data PostMessage = PostMessage Message Int
+  deriving (Generic, Show)
+
+data RecieveMessages = RecieveMessages [MessageObject] Int
   deriving (Generic, Show)
 
 data LoginData = LoginData Text Text
   deriving (Generic, Show)
 
 instance ToJSON MessageObject where
-  toJSON (MessageObject (UserId uid) msg) =
-    object ["userid" .= uid, "msg" .= msg]
+  toJSON (MessageObject user msg) =
+    object ["user" .= user, "msg" .= msg]
 
 instance FromJSON MessageObject where
   parseJSON (Object v) = MessageObject
-        <$> (UserId <$> v .: "userid")
+        <$> v .: "user"
         <*> v .: "msg"
+
+instance ToJSON PostMessage where
+  toJSON (PostMessage msg i) =
+    object ["id" .= i, "msg" .= msg]
+
+instance FromJSON PostMessage where
+  parseJSON (Object v) = PostMessage
+        <$> v .: "msg"
+        <*> v .: "id"
+
+instance ToJSON RecieveMessages where
+  toJSON (RecieveMessages msgs i) =
+    object ["msgs" .= msgs, "id" .= i]
+
+instance FromJSON RecieveMessages where
+  parseJSON (Object v) = RecieveMessages
+        <$> v .: "msgs"
+        <*> v .: "id"
 
 instance ToJSON LoginData where
   toJSON (LoginData u p) =
@@ -45,15 +79,6 @@ instance FromJSON LoginData where
   parseJSON (Object v) = LoginData
         <$> v .: "name"
         <*> v .: "pass"
-
-type MainAPI =
-  "messages"  :> Get '[JSON] [MessageObject]
-  :<|> "message" :> ReqBody '[JSON] MessageObject
-    :> Post '[JSON] Int
-  :<|> "auth" :> "logout" :> Post '[JSON] ()
-
-type LoginAPI =
-  "auth" :> "login" :> ReqBody '[JSON] LoginData :> Post '[PlainText] Text
 
 topWidget :: MonadWidget t m => m ()
 topWidget = do
@@ -99,40 +124,24 @@ runChatWindow authTok = do
   doneLogout <- doLogout logoutEv
   refEv <- button "refresh"
 
-  divClass "" $ do
-    text "messages"
+  rec
+    lastMsgIdDyn <- divClass "" $ do
+      text "messages"
 
-    msgEv <- getMessages refEv
-    m <- foldDyn (++) [] (fmapMaybe reqSuccess msgEv)
-    display m
-    m2 <- holdDyn Nothing (fmap reqFailure msgEv)
-    display m2
+      rsp <- getMessages (Right <$> lastMsgIdDyn) refEv
 
-  divClass "" $ do
-    ti <- textInput def
-    ev <- button "Post"
-    postMessage ((\m -> Right $ MessageObject (UserId 1) m) <$> value ti) ev
+      let (msgEv, msgIdEv) = splitE $ (\(RecieveMessages msgs i) -> (msgs,i)) <$>
+            (fmapMaybe reqSuccess rsp)
+      m <- foldDyn (++) [] msgEv
+      display m
+      m2 <- holdDyn 0  msgIdEv
+      display m2
+      return m2
+
+    divClass "" $ do
+      ti <- textInput def
+      ev <- button "Post"
+      postMessage ((\m i -> Right $ PostMessage  m i)
+                   <$> value ti <*> lastMsgIdDyn) ev
 
   return (() <$ doneLogout)
-
-
--- -- No need to write these functions. servant-reflex creates them for you!
---    getint :: MonadWidget t m
---           => Event t ()  -- ^ Trigger the XHR Request
---           -> m (Event t (ReqResult () Int)) -- ^ Consume the answer
-
---    sayhi :: MonadWidget t m
---          => Dynamic t (QParam Text) 
---             -- ^ One input parameter - the 'name', wrapped in 'QParam'
---          -> Dynamic t [Text]
---             -- ^ Another input: list of preferred greetings
---          -> Dynamic t Bool
---             -- ^ Flag for capitalizing the response
---          -> Event t ()
---             -- ^ Trigger the XHR Request
---          -> m (Event t (ReqResult () Text))
-
---    doubleit :: MonadWidget t m
---             => Dynamic t (Either Text Double)
---             -> Event t ()
---             -> m (Event t (ReqResult () Double))
