@@ -164,11 +164,11 @@ runChatWindow authTok = divClass "container" $ do
   doneLogout <-
     doLogout logoutEv
 
-  refEv <- tickLossyFromPostBuildTime 2
+  refEv <- tickLossyFromPostBuildTime 20
 
   divClass "" $ do
     rec
-      lastMsgIdDyn <- divClass "" $ do
+      lastMsgIdDyn <- divClass "section" $ do
         rsp <- getMessages (Right <$> lastMsgIdDyn) (() <$ refEv)
 
         let (msgEv, msgIdEv) = splitE $ (\(RecieveMessages msgs i) -> (msgs,i)) <$>
@@ -179,9 +179,12 @@ runChatWindow authTok = divClass "container" $ do
         display m2
         return m2
 
-      updMsgs <- divClass "" $ do
-        ti <- textInput def
-        ev <- button "Post"
+      updMsgs <- divClass "section" $ do
+        rec
+          ti <- textInput $ def
+            & textInputConfig_setValue .~ ("" <$ ev)
+            & textInputConfig_attributes .~ (constDyn ("class" =: "input"))
+          let ev = keypress Enter ti
         postMessage ((\m i -> Right $ PostMessage  m i)
                      <$> value ti <*> lastMsgIdDyn) ev
     return ()
@@ -226,6 +229,7 @@ navBar = do
                 elClass "span" "" $ do
                   text "Logout"
               return (domEvent Click e)
+
 -- widgetHoldWithRemoveAfterEvent
 --   :: (MonadFix m,
 --        MonadHold t m,
