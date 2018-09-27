@@ -123,7 +123,8 @@ loginWindow = do
           doLogin :<|> doRegister = client (Proxy :: Proxy LoginAPI)
                 (Proxy :: Proxy m)
                 (Proxy :: Proxy ())
-                (constDyn (BasePath "http://localhost:3000/"))
+                -- (constDyn (BasePath "http://localhost:3000/"))
+                (constDyn (BasePath "/"))
           loginData = LoginData <$> (value un) <*> (value pw)
 
         loginEv <- elClass "h2" "subtitle" $ do
@@ -151,7 +152,8 @@ runChatWindow authTok = divClass "container" $ do
         clientWithOpts (Proxy :: Proxy MainAPI)
           (Proxy :: Proxy m)
           (Proxy :: Proxy ())
-          (constDyn (BasePath "http://localhost:3000/"))
+          -- (constDyn (BasePath "http://localhost:3000/"))
+          (constDyn (BasePath "/"))
           tweakRequest
 
       tweakRequest = ClientOptions $ \r -> do
@@ -164,7 +166,7 @@ runChatWindow authTok = divClass "container" $ do
   doneLogout <-
     doLogout logoutEv
 
-  refEv <- tickLossyFromPostBuildTime 20
+  refEv <- tickLossyFromPostBuildTime 2
 
   divClass "" $ do
     let attr = ("class" =: "section") <>

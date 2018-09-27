@@ -24,7 +24,7 @@ executable frontend
                      , common
                      , reflex-dom
                      , servant-reflex
-                     , jsaddle-warp
+                     -- , jsaddle-warp
                      , servant
                      , text
                      , aeson
