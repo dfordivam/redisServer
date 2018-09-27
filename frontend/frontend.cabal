@@ -31,5 +31,7 @@ executable frontend
                      , containers
                      , protolude
                      , lens
+                     , ghcjs-dom
+                     , jsaddle
   hs-source-dirs:      src
   default-language:    Haskell2010

@@ -19,6 +19,12 @@ import Data.Proxy
 import Data.Text
 import qualified Data.Map as Map
 
+import GHCJS.DOM as X
+import qualified Language.Javascript.JSaddle.Types as X
+import GHCJS.DOM.Document
+import GHCJS.DOM.Element
+
+
 type MainAPI =
   "messages"  :> Capture "last" Int :> Get '[JSON] RecieveMessages
   :<|> "message" :> ReqBody '[JSON] PostMessage
@@ -83,38 +89,61 @@ instance FromJSON LoginData where
 
 topWidget :: MonadWidget t m => m ()
 topWidget = do
-  rec
-    lEv <- loginWindow
+  let
+    setCss = X.liftJSM $ do
+      doc <- currentDocumentUnchecked
+      headElement <- getHeadUnchecked doc
+      setInnerHTML headElement $
+        ("<link rel=\"stylesheet\" href=\"https://bulma.io/css/bulma-docs.min.css?v=201809250813\">" :: Text)
 
-    widgetHold (return (never))
-      (runChatWindow <$> lEv)
+  setCss
+  pb <- getPostBuild
+  rec
+    lEv <- widgetHoldWithRemoveAfterEvent (loginWindow <$ leftmost [pb, lo])
+
+    lo <- switch . current <$> widgetHold (return (never))
+        (runChatWindow <$> lEv)
   return ()
 
 loginWindow :: forall t m . MonadWidget t m => m (Event t Text)
 loginWindow = do
-  un <- textInput def
-  pw <- textInput def
-  ev <- button "Login"
-  regev <- button "Register"
+  elClass "section" "hero is-primary is-medium" $
+    divClass "hero-body" $ do
+      divClass "container has-text-centered" $ do
+        elClass "h1" "title" $ do
+          text "Please login to enter chat room"
 
-  let
-    doLogin :<|> doRegister = client (Proxy :: Proxy LoginAPI)
-          (Proxy :: Proxy m)
-          (Proxy :: Proxy ())
-          (constDyn (BasePath "http://localhost:3000/"))
-    loginData = LoginData <$> (value un) <*> (value pw)
-  regRes <- doRegister (Right <$> loginData) regev
-  let successEv = fmap (\r -> Nothing /= reqSuccess r) regRes
+        un <- elClass "h1" "title" $ do
+          textInput def
+        pw <- elClass "h2" "subtitle" $ do
+          textInput def
 
-  widgetHold (return ()) $
-    ffor successEv (\b -> if b
-      then (text "Success")
-      else (text "Try again"))
+        let
+          doLogin :<|> doRegister = client (Proxy :: Proxy LoginAPI)
+                (Proxy :: Proxy m)
+                (Proxy :: Proxy ())
+                (constDyn (BasePath "http://localhost:3000/"))
+          loginData = LoginData <$> (value un) <*> (value pw)
 
-  fmapMaybe reqSuccess <$> doLogin (Right <$> loginData) ev
+        loginEv <- elClass "h2" "subtitle" $ do
+          ev <- button "Login"
+          fmapMaybe reqSuccess <$> doLogin (Right <$> loginData) ev
+
+        elClass "h2" "subtitle" $ do
+          regev <- button "Register"
+          regRes <- doRegister (Right <$> loginData) regev
+          let successEv = fmap (\r -> Nothing /= reqSuccess r) regRes
+
+          widgetHold (return ()) $
+            ffor successEv (\b -> if b
+              then (text "Success")
+              else (text "Try again"))
+
+        return (loginEv)
+
 
 runChatWindow :: forall t m . MonadWidget t m => Text -> m (Event t ())
-runChatWindow authTok = do
+runChatWindow authTok = divClass "" $ do
 
   -- servant-reflex computes FRP functions for each MainAPI endpoint
   let (getMessages :<|> postMessage :<|> doLogout) =
@@ -130,28 +159,48 @@ runChatWindow authTok = do
           & xhrRequest_config . xhrRequestConfig_headers
             %~ Map.insert "Authorization" ("Bearer " <> authTok)
 
-  logoutEv <- button "Logout"
-  doneLogout <- doLogout logoutEv
-  refEv <- button "refresh"
+  doneLogout <- divClass "" $ do
+    logoutEv <- button "Logout"
+    doLogout logoutEv
 
-  rec
-    lastMsgIdDyn <- divClass "" $ do
-      text "messages"
+  refEv <- tickLossyFromPostBuildTime 2
 
-      rsp <- getMessages (Right <$> lastMsgIdDyn) refEv
+  divClass "" $ do
+    rec
+      lastMsgIdDyn <- divClass "" $ do
+        rsp <- getMessages (Right <$> lastMsgIdDyn) (() <$ refEv)
 
-      let (msgEv, msgIdEv) = splitE $ (\(RecieveMessages msgs i) -> (msgs,i)) <$>
-            (fmapMaybe reqSuccess rsp)
-      m <- foldDyn (++) [] msgEv
-      display m
-      m2 <- holdDyn 0  msgIdEv
-      display m2
-      return m2
+        let (msgEv, msgIdEv) = splitE $ (\(RecieveMessages msgs i) -> (msgs,i)) <$>
+              (fmapMaybe reqSuccess $ leftmost [rsp, updMsgs])
+        m <- foldDyn (++) [] msgEv
+        display m
+        m2 <- holdDyn 0  msgIdEv
+        display m2
+        return m2
 
-    divClass "" $ do
-      ti <- textInput def
-      ev <- button "Post"
-      postMessage ((\m i -> Right $ PostMessage  m i)
-                   <$> value ti <*> lastMsgIdDyn) ev
+      updMsgs <- divClass "" $ do
+        ti <- textInput def
+        ev <- button "Post"
+        postMessage ((\m i -> Right $ PostMessage  m i)
+                     <$> value ti <*> lastMsgIdDyn) ev
+    return ()
 
   return (() <$ doneLogout)
+
+-- widgetHoldWithRemoveAfterEvent
+--   :: (MonadFix m,
+--        MonadHold t m,
+--        DomBuilder t m)
+--   => Event t (m (Event t a))
+--   -> m (Event t a)
+widgetHoldWithRemoveAfterEvent wEv = do
+  let
+    f1 w = do
+      rec
+        let ev = (switch . current) evDyn
+        evDyn <- widgetHold (w)
+          (return never <$ ev)
+      return ev
+  evDyn <- widgetHold (return never)
+    (f1 <$> wEv)
+  return $ (switch . current) evDyn
