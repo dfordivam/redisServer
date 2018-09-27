@@ -48,12 +48,12 @@ instance FromJSON LoginData where
 
 type MainAPI =
   "messages"  :> Get '[JSON] [MessageObject]
-  :<|> "message" :> ReqBody '[JSON] Text
+  :<|> "message" :> ReqBody '[JSON] MessageObject
     :> Post '[JSON] Int
   :<|> "auth" :> "logout" :> Post '[JSON] ()
 
 type LoginAPI =
-  "auth" :> "login" :> ReqBody '[JSON] LoginData :> Post '[JSON] Text
+  "auth" :> "login" :> ReqBody '[JSON] LoginData :> Post '[PlainText] Text
 
 topWidget :: MonadWidget t m => m ()
 topWidget = do
@@ -74,7 +74,7 @@ loginWindow = do
     doLogin = client (Proxy :: Proxy LoginAPI)
           (Proxy :: Proxy m)
           (Proxy :: Proxy ())
-          (constDyn (BasePath "/"))
+          (constDyn (BasePath "http://localhost:3000/"))
     loginData = LoginData <$> (value un) <*> (value pw)
   fmapMaybe reqSuccess <$> doLogin (Right <$> loginData) ev
 
@@ -86,7 +86,7 @@ runChatWindow authTok = do
         clientWithOpts (Proxy :: Proxy MainAPI)
           (Proxy :: Proxy m)
           (Proxy :: Proxy ())
-          (constDyn (BasePath "/"))
+          (constDyn (BasePath "http://localhost:3000/"))
           tweakRequest
 
       tweakRequest = ClientOptions $ \r -> do
@@ -105,11 +105,13 @@ runChatWindow authTok = do
     msgEv <- getMessages refEv
     m <- foldDyn (++) [] (fmapMaybe reqSuccess msgEv)
     display m
+    m2 <- holdDyn Nothing (fmap reqFailure msgEv)
+    display m2
 
   divClass "" $ do
     ti <- textInput def
     ev <- button "Post"
-    postMessage (Right <$> value ti) ev
+    postMessage ((\m -> Right $ MessageObject (UserId 1) m) <$> value ti) ev
 
   return (() <$ doneLogout)
 
