@@ -167,17 +167,17 @@ runChatWindow authTok = divClass "container" $ do
   refEv <- tickLossyFromPostBuildTime 20
 
   divClass "" $ do
+    let attr = ("class" =: "section") <>
+          ("style" =: "height: 80vh; overflow: auto")
     rec
-      lastMsgIdDyn <- divClass "section" $ do
+      lastMsgIdDyn <- elAttr "div" attr $ do
         rsp <- getMessages (Right <$> lastMsgIdDyn) (() <$ refEv)
 
         let (msgEv, msgIdEv) = splitE $ (\(RecieveMessages msgs i) -> (msgs,i)) <$>
               (fmapMaybe reqSuccess $ leftmost [rsp, updMsgs])
-        m <- foldDyn (++) [] msgEv
-        display m
-        m2 <- holdDyn 0  msgIdEv
-        display m2
-        return m2
+        m <- foldDyn (flip (++)) [] msgEv
+        simpleList m (\a -> dyn (showMsg <$> a))
+        holdDyn 0  msgIdEv
 
       updMsgs <- divClass "section" $ do
         rec
@@ -196,15 +196,9 @@ navBar = do
   elClass "nav" "navbar is-transparent" $ do
     divClass "navbar-brand" $ do
       let
-        attr1 = ("class" =: "navbar-item") <>
-                ("href" =: "https://bulma.io")
+        attr1 = ("class" =: "navbar-item")
       elAttr "a" attr1 $ do
-        let
-          attr2 = ("alt" =: "Bulma: a modern CSS framework based on Flexbox")
-                  <> ("height" =: "28") <>
-                  ("src" =: "https://bulma.io/images/bulma-logo.png") <>
-                  ("width" =: "112")
-        elAttr "img" attr2 $ return ()
+        text "Demo Chat App"
         return ()
       let
         attr3 = ("class" =: "navbar-burger burger") <>
@@ -229,6 +223,17 @@ navBar = do
                 elClass "span" "" $ do
                   text "Logout"
               return (domEvent Click e)
+
+showMsg :: MonadWidget t m => MessageObject -> m ()
+showMsg (MessageObject user msg) = do
+  elClass "article" "media" $ do
+    divClass "media-content" $ do
+      divClass "content" $ do
+        el "p" $ do
+          el "strong" $ do
+            text user
+          el "br" $ return ()
+          text msg
 
 -- widgetHoldWithRemoveAfterEvent
 --   :: (MonadFix m,
