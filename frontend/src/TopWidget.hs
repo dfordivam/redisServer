@@ -6,6 +6,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module TopWidget where
 
@@ -101,8 +103,7 @@ topWidget = do
   rec
     lEv <- widgetHoldWithRemoveAfterEvent (loginWindow <$ leftmost [pb, lo])
 
-    lo <- switch . current <$> widgetHold (return (never))
-        (runChatWindow <$> lEv)
+    lo <- widgetHoldWithRemoveAfterEvent (runChatWindow <$> lEv)
   return ()
 
 loginWindow :: forall t m . MonadWidget t m => m (Event t Text)
@@ -143,7 +144,7 @@ loginWindow = do
 
 
 runChatWindow :: forall t m . MonadWidget t m => Text -> m (Event t ())
-runChatWindow authTok = divClass "" $ do
+runChatWindow authTok = divClass "container" $ do
 
   -- servant-reflex computes FRP functions for each MainAPI endpoint
   let (getMessages :<|> postMessage :<|> doLogout) =
@@ -159,8 +160,8 @@ runChatWindow authTok = divClass "" $ do
           & xhrRequest_config . xhrRequestConfig_headers
             %~ Map.insert "Authorization" ("Bearer " <> authTok)
 
-  doneLogout <- divClass "" $ do
-    logoutEv <- button "Logout"
+  logoutEv <- navBar
+  doneLogout <-
     doLogout logoutEv
 
   refEv <- tickLossyFromPostBuildTime 2
@@ -187,6 +188,44 @@ runChatWindow authTok = divClass "" $ do
 
   return (() <$ doneLogout)
 
+navBar :: (MonadWidget t m, _) => m (Event t ())
+navBar = do
+  elClass "nav" "navbar is-transparent" $ do
+    divClass "navbar-brand" $ do
+      let
+        attr1 = ("class" =: "navbar-item") <>
+                ("href" =: "https://bulma.io")
+      elAttr "a" attr1 $ do
+        let
+          attr2 = ("alt" =: "Bulma: a modern CSS framework based on Flexbox")
+                  <> ("height" =: "28") <>
+                  ("src" =: "https://bulma.io/images/bulma-logo.png") <>
+                  ("width" =: "112")
+        elAttr "img" attr2 $ return ()
+        return ()
+      let
+        attr3 = ("class" =: "navbar-burger burger") <>
+                ("data-target" =: "navbarExampleTransparentExample")
+      elAttr "div" attr3 $ do
+        el "span" $ return ()
+        el "span" $ return ()
+        el "span" $ return ()
+        return ()
+      return ()
+    let
+      attr4 = ("class" =: "navbar-menu") <>
+              ("id" =: "navbarExampleTransparentExample")
+    elAttr "div" attr4 $ do
+      divClass "navbar-end" $ do
+        divClass "navbar-item" $ do
+          divClass "field is-grouped" $ do
+            elClass "p" "control" $ do
+              let
+                attr15 = ("class" =: "button is-primary")
+              (e,_) <- elAttr' "a" attr15 $ do
+                elClass "span" "" $ do
+                  text "Logout"
+              return (domEvent Click e)
 -- widgetHoldWithRemoveAfterEvent
 --   :: (MonadFix m,
 --        MonadHold t m,
