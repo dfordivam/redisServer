@@ -27,6 +27,7 @@ type MainAPI =
 
 type LoginAPI =
   "auth" :> "login" :> ReqBody '[JSON] LoginData :> Post '[PlainText] Text
+  :<|> "register" :> ReqBody '[JSON] LoginData :> Post '[PlainText] Text
 
 type User = Text
 type Message = Text
@@ -94,13 +95,22 @@ loginWindow = do
   un <- textInput def
   pw <- textInput def
   ev <- button "Login"
+  regev <- button "Register"
 
   let
-    doLogin = client (Proxy :: Proxy LoginAPI)
+    doLogin :<|> doRegister = client (Proxy :: Proxy LoginAPI)
           (Proxy :: Proxy m)
           (Proxy :: Proxy ())
           (constDyn (BasePath "http://localhost:3000/"))
     loginData = LoginData <$> (value un) <*> (value pw)
+  regRes <- doRegister (Right <$> loginData) regev
+  let successEv = fmap (\r -> Nothing /= reqSuccess r) regRes
+
+  widgetHold (return ()) $
+    ffor successEv (\b -> if b
+      then (text "Success")
+      else (text "Try again"))
+
   fmapMaybe reqSuccess <$> doLogin (Right <$> loginData) ev
 
 runChatWindow :: forall t m . MonadWidget t m => Text -> m (Event t ())
